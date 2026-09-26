@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Al Noor Home Store – Talk to Sara</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --green: #16a34a;
+      --red: #dc2626;
+      --amber: #f59e0b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a, #1e3a8a);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      color: var(--text);
+    }
+    .card {
+      background: var(--card);
+      width: 100%;
+      max-width: 440px;
+      border-radius: 20px;
+      padding: 28px 22px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.35);
+      text-align: center;
+    }
+    .avatar {
+      width: 96px; height: 96px;
+      margin: 0 auto 14px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #22c55e, #0ea5e9);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 42px; color: #fff;
+      transition: transform .15s ease;
+    }
+    .avatar.live { animation: pulse 1.6s infinite; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(34,197,94,.55); }
+      70% { box-shadow: 0 0 0 22px rgba(34,197,94,0); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    .sub { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+    .status {
+      display: inline-block;
+      font-size: 13px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+    .buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 14px 26px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #fff;
+      background: var(--green);
+      transition: opacity .15s ease;
+    }
+    button:disabled { opacity: .6; cursor: default; }
+    #muteBtn { background: #475569; display: none; }
+    .transcript {
+      margin-top: 22px;
+      text-align: left;
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 14px;
+      display: none;
+    }
+    .msg { margin: 0 0 8px; line-height: 1.4; }
+    .msg b { color: var(--muted); font-weight: 600; }
+    .note { margin-top: 16px; font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="avatar" id="avatar">🎧</div>
+    <h1>Talk to Sara</h1>
+    <p class="sub">Al Noor Home Store · Urdu / English</p>
+    <div class="status" id="status">Ready</div>
+
+    <div class="buttons">
+      <button id="callBtn">📞 Start Call</button>
+      <button id="muteBtn">🔇 Mute</button>
+    </div>
+
+    <div class="transcript" id="transcript"></div>
+    <p class="note">Please allow microphone access when your browser asks.</p>
+  </div>
+
+  <script type="module">
+    import { RetellClient } from "https://esm.sh/retell-client-js-sdk@latest";
+
+    // ====== PUT YOUR VALUES HERE ======
+    const PUBLIC_KEY = "PUT_YOUR_PUBLIC_KEY_HERE";
+    const AGENT_ID = "agent_6f0516627fb31bc92aca999549";
+    // ==================================
+
+    const client = new RetellClient({ key: PUBLIC_KEY });
+
+    const callBtn = document.getElementById("callBtn");
+    const muteBtn = document.getElementById("muteBtn");
+    const statusEl = document.getElementById("status");
+    const avatar = document.getElementById("avatar");
+    const transcriptEl = document.getElementById("transcript");
+
+    let call = null;
+    let muted = false;
+
+    function setStatus(text) { statusEl.textContent = text; }
+
+    function resetUI() {
+      callBtn.textContent = "📞 Start Call";
+      callBtn.style.background = "var(--green)";
+      callBtn.disabled = false;
+      muteBtn.style.display = "none";
+      muteBtn.textContent = "🔇 Mute";
+      muted = false;
+      avatar.classList.remove("live");
+    }
+
+    function renderTranscript(items) {
+      if (!Array.isArray(items)) return;
+      const lines = items
+        .map((item) => {
+          const role = item.role || item.speaker || "";
+          const text = item.content || item.text || "";
+          if (!text || typeof text !== "string") return "";
+          const who = role === "agent" ? "Sara" : role === "user" ? "You" : role;
+          return `<p class="msg"><b>${who}:</b> ${text.replace(/</g, "&lt;")}</p>`;
+        })
+        .filter(Boolean);
+      if (lines.length) {
+        transcriptEl.style.display = "block";
+        transcriptEl.innerHTML = lines.join("");
+        transcriptEl.scrollTop = transcriptEl.scrollHeight;
+      }
+    }
+
+    callBtn.addEventListener("click", async () => {
+      // End the call if one is active
+      if (call && call.status !== "ended") {
+        await call.end();
+        return;
+      }
+
+      callBtn.disabled = true;
+      callBtn.textContent = "⏳ Connecting...";
+      callBtn.style.background = "var(--amber)";
+      setStatus("Connecting...");
+      transcriptEl.innerHTML = "";
+
+      try {
+        call = client.createWebCall({
+          agent_id: AGENT_ID,
+          transcript: true,
+          metadata: { source: "website" },
+          hooks: {
+            onStatus: (s) => {
+              if (s === "live") {
+                setStatus("🟢 Live – speak now");
+                callBtn.disabled = false;
+                callBtn.textContent = "🔴 End Call";
+                callBtn.style.background = "var(--red)";
+                muteBtn.style.display = "inline-block";
+                avatar.classList.add("live");
+              }
+            },
+            onTranscript: (transcript) => renderTranscript(transcript),
+            onEnd: () => {
+              setStatus("Call ended");
+              resetUI();
+            },
+            onError: (err) => {
+              console.error("Retell error:", err);
+              setStatus("⚠️ " + (err?.message || "Could not start the call"));
+              resetUI();
+            },
+          },
+        });
+      } catch (err) {
+        console.error(err);
+        setStatus("⚠️ " + (err?.message || "Could not start the call"));
+        resetUI();
+      }
+    });
+
+    muteBtn.addEventListener("click", () => {
+      if (!call) return;
+      if (muted) {
+        call.unmute();
+        muteBtn.textContent = "🔇 Mute";
+      } else {
+        call.mute();
+        muteBtn.textContent = "🎙️ Unmute";
+      }
+      muted = !muted;
+    });
+  </script>
+</body>
+</html>
